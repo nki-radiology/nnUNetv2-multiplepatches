@@ -202,7 +202,7 @@ class nnUNetTrainer(object):
             ## DDP batch size and oversampling can differ between workers and needs adaptation
             # we need to change the batch size in DDP because we don't use any of those distributed samplers
             self._set_batch_size_and_oversample()
-
+            # MARK: possible batch change:  _set_batch_size_and_oversample()
             self.num_input_channels = determine_num_input_channels(self.plans_manager, self.configuration_manager,
                                                                    self.dataset_json)
 
@@ -344,6 +344,7 @@ class nnUNetTrainer(object):
         return deep_supervision_scales
 
     def _set_batch_size_and_oversample(self):
+        # MARK: batch size and oversample -> could influence
         if not self.is_ddp:
             # set batch size to what the plan says, leave oversample untouched
             self.batch_size = self.configuration_manager.batch_size

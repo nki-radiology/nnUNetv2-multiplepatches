@@ -65,6 +65,8 @@ class nnUNetDataLoader(DataLoader):
         self.get_do_oversample = self._oversample_last_XX_percent if not probabilistic_oversampling \
             else self._probabilistic_oversampling
         self.transforms = transforms
+        # NOTE: patches_per_scan difinition -> makes it use more patches per scan
+        self.patches_per_scan = 2
 
     def _oversample_last_XX_percent(self, sample_idx: int) -> bool:
         """
@@ -94,7 +96,7 @@ class nnUNetDataLoader(DataLoader):
         # locations for the given slice
         need_to_pad = self.need_to_pad.copy()
         dim = len(data_shape)
-
+        # NOTE: IMPORTANT! IF WE HAVE A SMALLER DIMS THAT THE PATCH SIZE (will prob not be the case if we lower the patch size)
         for d in range(dim):
             # if case_all_data.shape + need_to_pad is still < patch size we need to pad more! We pad on both sides
             # always
@@ -164,18 +166,100 @@ class nnUNetDataLoader(DataLoader):
 
         return bbox_lbs, bbox_ubs
 
+    def get_indices(self):
+        """
+        Custom method to get indices within the same scans to improve the dataloading process (when batch sizes are getting a bit to large)
+        Need to define: self.patches_per_scan!!!
+        HACK: NEW INDICES METHOD
+        """
+        if self.infinite:
+            num_scans = self.batch_size // self.patches_per_scan
+            # Changed "replace" to false -> prevent picking the same scan multiple times (we already do this)
+            # TODO: Talk with Kevin about  p=self.sampling_probabilities usage for oversampling -> Not sure for us because we only have 0/1 labels??
+            selected_scans = np.random.choice(self.indices, num_scans, replace=False)
+            selected_keys = []
+            for scan_id in selected_scans:
+                selected_keys.extend([scan_id] * self.patches_per_scan)
+            return selected_keys
+
+            # Original sequential (non-infinite) behavior below
+        if self.last_reached:
+            self.reset()
+            raise StopIteration
+
+        if not self.was_initialized:
+            self.reset()
+
+        indices = []
+        for b in range(self.batch_size):
+            if self.current_position < len(self.indices):
+                indices.append(self.indices[self.current_position])
+                self.current_position += 1
+            else:
+                self.last_reached = True
+                break
+
+        if len(indices) > 0 and ((not self.last_reached) or self.return_incomplete):
+            self.current_position += (self.number_of_threads_in_multithreaded - 1) * self.batch_size
+            return indices
+        else:
+            self.reset()
+            raise StopIteration
+
+    def __get_indices(self):
+        """
+        original get_indices() from:
+        batchgenerators.dataloading.data_loader DataLoader
+        """
+        # if self.infinite, this is easy
+        if self.infinite:
+            return np.random.choice(self.indices, self.batch_size, replace=True, p=self.sampling_probabilities)
+
+        if self.last_reached:
+            self.reset()
+            raise StopIteration
+
+        if not self.was_initialized:
+            self.reset()
+
+        indices = []
+
+        for b in range(self.batch_size):
+            if self.current_position < len(self.indices):
+                indices.append(self.indices[self.current_position])
+
+                self.current_position += 1
+            else:
+                self.last_reached = True
+                break
+
+        if len(indices) > 0 and ((not self.last_reached) or self.return_incomplete):
+            self.current_position += (self.number_of_threads_in_multithreaded - 1) * self.batch_size
+            return indices
+        else:
+            self.reset()
+            raise StopIteration
+
     def generate_train_batch(self):
-        selected_keys = self.get_indices()
+        # NOTE: Prob got the batch from patch!
+        selected_keys = self.get_indices() # -> get the indices from
         # preallocate memory for data and seg
         data_all = np.zeros(self.data_shape, dtype=np.float32)
         seg_all = np.zeros(self.seg_shape, dtype=np.int16)
+        loaded_cases ={}
+        for j, scan_id in enumerate(selected_keys):
+            # NOTE: for myself (Bas)
+            # j = sample idx
+            # i / scan_id = idx
+            if scan_id not in loaded_cases:
+                # HACK: prevents loading the same scan again!
+                loaded_cases[scan_id] = self._data.load_case(scan_id)
 
-        for j, i in enumerate(selected_keys):
             # oversampling foreground will improve stability of model training, especially if many patches are empty
             # (Lung for example)
             force_fg = self.get_do_oversample(j)
 
-            data, seg, seg_prev, properties = self._data.load_case(i)
+            data, seg, seg_prev, properties = self._data.load_case(scan_id)
 
             # If we are doing the cascade then the segmentation from the previous stage will already have been loaded by
             # self._data.load_case(i) (see nnUNetDataset.load_case)
