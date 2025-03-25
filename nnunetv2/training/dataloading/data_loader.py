@@ -28,7 +28,7 @@ class nnUNetDataLoader(DataLoader):
                  pad_sides: Union[List[int], Tuple[int, ...]] = None,
                  probabilistic_oversampling: bool = False,
                  transforms=None,
-                 patches_per_scan: int = 1,
+                 indices_per_scan: int = 1,
                  ):
         """
         If we get a 2D patch size, make it pseudo 3D and remember to remove the singleton dimension before
@@ -46,7 +46,7 @@ class nnUNetDataLoader(DataLoader):
 
         # this is used by DataLoader for sampling train cases!
         self.indices = data.identifiers
-        self.patches_per_scan = patches_per_scan
+        self.indices_per_scan = indices_per_scan
         self.oversample_foreground_percent = oversample_foreground_percent
         self.final_patch_size = final_patch_size
         self.patch_size = patch_size
@@ -67,7 +67,7 @@ class nnUNetDataLoader(DataLoader):
         self.get_do_oversample = self._oversample_last_XX_percent if not probabilistic_oversampling \
             else self._probabilistic_oversampling
         self.transforms = transforms
-        # NOTE: patches_per_scan difinition -> makes it use more patches per scan
+        # NOTE: indices_per_scan difinition -> makes it use more patches per scan
 
 
     def _oversample_last_XX_percent(self, sample_idx: int) -> bool:
@@ -171,18 +171,18 @@ class nnUNetDataLoader(DataLoader):
     def get_indices(self):
         """
         Custom method to get indices within the same scans to improve the dataloading process (when batch sizes are getting a bit to large)
-        Need to define: self.patches_per_scan!!!
+        Need to define: self.indices_per_scan!!!
         HACK: NEW INDICES METHOD
         """
 
         if self.infinite:
-            num_scans = self.batch_size // self.patches_per_scan
+            num_scans = self.batch_size // self.indices_per_scan
             # Changed "replace" to false -> prevent picking the same scan multiple times (we already do this)
             # TODO: Talk with Kevin about  p=self.sampling_probabilities usage for oversampling -> Not sure for us because we only have 0/1 labels??
             selected_scans = np.random.choice(self.indices, num_scans, replace=False)
             selected_keys = []
             for scan_id in selected_scans:
-                selected_keys.extend([scan_id] * self.patches_per_scan)
+                selected_keys.extend([scan_id] * self.indices_per_scan)
             return selected_keys
 
             # Original sequential (non-infinite) behavior below
