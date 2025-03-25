@@ -27,7 +27,9 @@ class nnUNetDataLoader(DataLoader):
                  sampling_probabilities: Union[List[int], Tuple[int, ...], np.ndarray] = None,
                  pad_sides: Union[List[int], Tuple[int, ...]] = None,
                  probabilistic_oversampling: bool = False,
-                 transforms=None):
+                 transforms=None,
+                 patches_per_scan: int = 1,
+                 ):
         """
         If we get a 2D patch size, make it pseudo 3D and remember to remove the singleton dimension before
         returning the batch
@@ -44,7 +46,7 @@ class nnUNetDataLoader(DataLoader):
 
         # this is used by DataLoader for sampling train cases!
         self.indices = data.identifiers
-
+        self.patches_per_scan = patches_per_scan
         self.oversample_foreground_percent = oversample_foreground_percent
         self.final_patch_size = final_patch_size
         self.patch_size = patch_size
@@ -66,7 +68,7 @@ class nnUNetDataLoader(DataLoader):
             else self._probabilistic_oversampling
         self.transforms = transforms
         # NOTE: patches_per_scan difinition -> makes it use more patches per scan
-        self.patches_per_scan = 2
+
 
     def _oversample_last_XX_percent(self, sample_idx: int) -> bool:
         """
@@ -174,7 +176,7 @@ class nnUNetDataLoader(DataLoader):
         """
 
         if self.infinite:
-            num_scans = self.batch_size // self.configuration_manager.indices_per_scan()
+            num_scans = self.batch_size // self.patches_per_scan
             # Changed "replace" to false -> prevent picking the same scan multiple times (we already do this)
             # TODO: Talk with Kevin about  p=self.sampling_probabilities usage for oversampling -> Not sure for us because we only have 0/1 labels??
             selected_scans = np.random.choice(self.indices, num_scans, replace=False)
