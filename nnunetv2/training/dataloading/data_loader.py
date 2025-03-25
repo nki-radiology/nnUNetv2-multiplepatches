@@ -166,7 +166,7 @@ class nnUNetDataLoader(DataLoader):
 
         return bbox_lbs, bbox_ubs
 
-    def get_indices(self):
+    def get_multiple_indices_per_scan(self):
         """
         Custom method to get indices within the same scans to improve the dataloading process (when batch sizes are getting a bit to large)
         Need to define: self.patches_per_scan!!!
