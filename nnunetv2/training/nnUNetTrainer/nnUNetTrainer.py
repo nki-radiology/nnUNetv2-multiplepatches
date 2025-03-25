@@ -683,7 +683,7 @@ class nnUNetTrainer(object):
                                   oversample_foreground_percent=self.oversample_foreground_percent,
                                   sampling_probabilities=None, pad_sides=None, transforms=val_transforms,
                                   probabilistic_oversampling=self.probabilistic_oversampling,
-                                  patches_per_scan=self.configuration_manager.indices_per_scan)
+                                  indices_per_scan=self.configuration_manager.indices_per_scan)
 
         allowed_num_processes = get_allowed_n_proc_DA()
         if allowed_num_processes == 0:
