@@ -174,7 +174,6 @@ class nnUNetDataLoader(DataLoader):
         Need to define: self.indices_per_scan!!!
         HACK: NEW INDICES METHOD
         """
-
         if self.infinite:
             num_scans = self.batch_size // self.indices_per_scan
             # Changed "replace" to false -> prevent picking the same scan multiple times (we already do this)
@@ -253,7 +252,7 @@ class nnUNetDataLoader(DataLoader):
         for j, scan_id in enumerate(selected_keys):
             # NOTE: for myself (Bas)
             # j = sample idx
-            # i / scan_id = idx
+            # i / scan_id
             if scan_id not in loaded_cases:
                 # HACK: prevents loading the same scan again!
                 loaded_cases[scan_id] = self._data.load_case(scan_id)

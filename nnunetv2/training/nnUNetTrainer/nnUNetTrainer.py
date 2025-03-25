@@ -629,6 +629,13 @@ class nnUNetTrainer(object):
         # we need to use dummy 2D augmentation (in case of 3D training) and what our initial patch size should be
         patch_size = self.configuration_manager.patch_size
 
+        if self.configuration_manager.indices_per_scan != 1:
+            scans_per_batch = self.configuration_manager.indices_per_scan // self.configuration_manager.batch_size
+            self.print_to_log_file('WARNING: Usage patches per scan per batch edited!')
+            self.print_to_log_file('Using %d scans with each %d patches per batch' % (self.configuration_manager.indices_per_scan, scans_per_batch))
+            if self.batch_size < self.indices_per_scan:
+                raise RuntimeError('Batch size is smaller than indices per scan, is not possible!')
+
         # needed for deep supervision: how much do we need to downscale the segmentation targets for the different
         # outputs?
         deep_supervision_scales = self._get_deep_supervision_scales()
