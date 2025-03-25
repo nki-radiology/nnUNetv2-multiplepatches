@@ -304,7 +304,7 @@ class nnUNetDataLoader(DataLoader):
 
 
 if __name__ == '__main__':
-    folder = join(nnUNet_preprocessed, 'Dataset002_Heart', 'nnUNetPlans_3d_fullres')
+    folder = join(nnUNet_preprocessed, 'Dataset904_PAN', 'nnUNetPlans_3d_fullres')
     ds = nnUNetDatasetBlosc2(folder)  # this should not load the properties!
     pm = PlansManager(join(folder, os.pardir, 'nnUNetPlans.json'))
     lm = pm.get_label_manager(load_json(join(folder, os.pardir, 'dataset.json')))
