@@ -630,7 +630,7 @@ class nnUNetTrainer(object):
         patch_size = self.configuration_manager.patch_size
 
         if self.configuration_manager.indices_per_scan != 1:
-            scans_per_batch = self.configuration_manager.indices_per_scan // self.configuration_manager.batch_size
+            scans_per_batch = self.configuration_manager.batch_size // self.configuration_manager.indices_per_scan
             self.print_to_log_file('WARNING: Usage patches per scan per batch edited!')
             self.print_to_log_file('WARNING: patches per scan: %d' % self.configuration_manager.indices_per_scan)
             self.print_to_log_file('WARNING: Total amount of indices patches per batch: %d' % self.configuration_manager.batch_size)
