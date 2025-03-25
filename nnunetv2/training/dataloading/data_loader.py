@@ -166,14 +166,15 @@ class nnUNetDataLoader(DataLoader):
 
         return bbox_lbs, bbox_ubs
 
-    def get_multiple_indices_per_scan(self):
+    def get_indices(self):
         """
         Custom method to get indices within the same scans to improve the dataloading process (when batch sizes are getting a bit to large)
         Need to define: self.patches_per_scan!!!
         HACK: NEW INDICES METHOD
         """
+
         if self.infinite:
-            num_scans = self.batch_size // self.patches_per_scan
+            num_scans = self.batch_size // self.configuration_manager.indices_per_scan()
             # Changed "replace" to false -> prevent picking the same scan multiple times (we already do this)
             # TODO: Talk with Kevin about  p=self.sampling_probabilities usage for oversampling -> Not sure for us because we only have 0/1 labels??
             selected_scans = np.random.choice(self.indices, num_scans, replace=False)

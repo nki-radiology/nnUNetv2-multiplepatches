@@ -124,6 +124,10 @@ class ConfigurationManager(object):
         return self.configuration['patch_size']
 
     @property
+    def indices_per_scan(self) -> int:
+        return self.configuration.get('indices_per_scan', 1)
+
+    @property
     def median_image_size_in_voxels(self) -> List[int]:
         return self.configuration['median_image_size_in_voxels']
 
