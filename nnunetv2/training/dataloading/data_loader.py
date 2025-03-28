@@ -10,7 +10,7 @@ from threadpoolctl import threadpool_limits
 
 from nnunetv2.paths import nnUNet_preprocessed
 from nnunetv2.training.dataloading.nnunet_dataset import nnUNetBaseDataset
-from nnunetv2.training.dataloading.nnunet_dataset import nnUNetDatasetBlosc2
+from nnunetv2.training.dataloading.nnunet_dataset import nnUNetDatasetBlosc2, nnUNetDatasetNumpy
 from nnunetv2.utilities.label_handling.label_handling import LabelManager
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 from acvl_utils.cropping_and_padding.bounding_boxes import crop_and_pad_nd
@@ -26,7 +26,7 @@ class nnUNetDataLoader(DataLoader):
                  oversample_foreground_percent: float = 0.0,
                  sampling_probabilities: Union[List[int], Tuple[int, ...], np.ndarray] = None,
                  pad_sides: Union[List[int], Tuple[int, ...]] = None,
-                 probabilistic_oversampling: bool = False,
+                 probabilistic_oversampling: bool = True, # TODO: make this in default True (to always randomize the oversampling)
                  transforms=None,
                  indices_per_scan: int = 1,
                  ):
@@ -74,7 +74,8 @@ class nnUNetDataLoader(DataLoader):
         """
         determines whether sample sample_idx in a minibatch needs to be guaranteed foreground
         """
-        return not sample_idx < round(self.batch_size * (1 - self.oversample_foreground_percent))
+        # NOTE: not very good
+        return not sample_idx < round(self.indices_per_scan * (1 - self.oversample_foreground_percent))
 
     def _probabilistic_oversampling(self, sample_idx: int) -> bool:
         # print('YEAH BOIIIIII')
@@ -168,22 +169,24 @@ class nnUNetDataLoader(DataLoader):
 
         return bbox_lbs, bbox_ubs
 
-    def get_indices(self):
+    def get_scans(self):
         """
         Custom method to get indices within the same scans to improve the dataloading process (when batch sizes are getting a bit to large)
-        Need to define: self.indices_per_scan!!!
+        Will get X amount of scans for the for the batch size Y where we defined we want Z amount of patches per scan (X = Y/Z)
         HACK: NEW INDICES METHOD
         """
         if self.infinite:
-            num_scans = self.batch_size // self.indices_per_scan
+            # Accept that batch_size is divisable by indices_per_scan
+            num_scans = int(self.batch_size / self.indices_per_scan)
+            if self.batch_size % self.indices_per_scan != 0:
+                raise ValueError(
+                    f"Batch size {self.batch_size} is not divisible by indices_per_scan {self.indices_per_scan}")
             # Changed "replace" to false -> prevent picking the same scan multiple times (we already do this)
-            # TODO: Talk with Kevin about  p=self.sampling_probabilities usage for oversampling -> Not sure for us because we only have 0/1 labels??
-            selected_scans = np.random.choice(self.indices, num_scans, replace=False)
+            selected_scans = np.random.choice(self.indices, num_scans, replace=False, p=self.sampling_probabilities)
             selected_keys = []
             for scan_id in selected_scans:
                 selected_keys.extend([scan_id] * self.indices_per_scan)
-            return selected_keys
-
+            return selected_scans, selected_keys[:self.batch_size]
             # Original sequential (non-infinite) behavior below
         if self.last_reached:
             self.reset()
@@ -208,75 +211,44 @@ class nnUNetDataLoader(DataLoader):
             self.reset()
             raise StopIteration
 
-    def __get_indices(self):
-        """
-        original get_indices() from:
-        batchgenerators.dataloading.data_loader DataLoader
-        """
-        # if self.infinite, this is easy
-        if self.infinite:
-            return np.random.choice(self.indices, self.batch_size, replace=True, p=self.sampling_probabilities)
-
-        if self.last_reached:
-            self.reset()
-            raise StopIteration
-
-        if not self.was_initialized:
-            self.reset()
-
-        indices = []
-
-        for b in range(self.batch_size):
-            if self.current_position < len(self.indices):
-                indices.append(self.indices[self.current_position])
-
-                self.current_position += 1
-            else:
-                self.last_reached = True
-                break
-
-        if len(indices) > 0 and ((not self.last_reached) or self.return_incomplete):
-            self.current_position += (self.number_of_threads_in_multithreaded - 1) * self.batch_size
-            return indices
-        else:
-            self.reset()
-            raise StopIteration
-
     def generate_train_batch(self):
         # NOTE: Prob got the batch from patch!
-        selected_keys = self.get_indices() # -> get the indices from
+        selected_scans, selected_keys = self.get_scans() # -> get the scans and keys
         # preallocate memory for data and seg
         data_all = np.zeros(self.data_shape, dtype=np.float32)
         seg_all = np.zeros(self.seg_shape, dtype=np.int16)
-        loaded_cases ={}
-        for j, scan_id in enumerate(selected_keys):
-            # NOTE: for myself (Bas)
-            # j = sample idx
-            # i / scan_id
-            if scan_id not in loaded_cases:
-                # HACK: prevents loading the same scan again!
-                loaded_cases[scan_id] = self._data.load_case(scan_id)
 
-            # oversampling foreground will improve stability of model training, especially if many patches are empty
-            # (Lung for example)
-            force_fg = self.get_do_oversample(j)
-
+        # patch index (for each patch in the batch
+        patch_index_all = 0
+        for scan_id in selected_scans:
+            # Only need to load the scan 1 time
             data, seg, seg_prev, properties = self._data.load_case(scan_id)
 
-            # If we are doing the cascade then the segmentation from the previous stage will already have been loaded by
-            # self._data.load_case(i) (see nnUNetDataset.load_case)
-            shape = data.shape[1:]
+            for patch_index_scan in range(self.indices_per_scan):
+                # oversampling foreground will improve stability of model training, especially if many patches are empty
+                # (Lung for example)
+                # force over the scans
+                if self.indices_per_scan == 1:
+                    force_fg = self.get_do_oversample(patch_index_all)
+                else:
+                    force_fg = self.get_do_oversample(patch_index_scan)
 
-            bbox_lbs, bbox_ubs = self.get_bbox(shape, force_fg, properties['class_locations'])
-            bbox = [[i, j] for i, j in zip(bbox_lbs, bbox_ubs)]
+                # If we are doing the cascade then the segmentation from the previous stage will already have been loaded by
+                # self._data.load_case(i) (see nnUNetDataset.load_case)
+                shape = data.shape[1:]
 
-            # use ACVL utils for that. Cleaner.
-            data_all[j] = crop_and_pad_nd(data, bbox, 0)
+                bbox_lbs, bbox_ubs = self.get_bbox(shape, force_fg, properties['class_locations'])
+                bbox = [[i, j] for i, j in zip(bbox_lbs, bbox_ubs)]
 
-            seg_cropped = crop_and_pad_nd(seg, bbox, -1)
-            if seg_prev is not None:
-                seg_cropped = np.vstack((seg_cropped, crop_and_pad_nd(seg_prev, bbox, -1)[None]))
-            seg_all[j] = seg_cropped
+                # use ACVL utils for that. Cleaner.
+                data_all[patch_index_all] = crop_and_pad_nd(data, bbox, 0)
+
+                seg_cropped = crop_and_pad_nd(seg, bbox, -1)
+                if seg_prev is not None:
+                    seg_cropped = np.vstack((seg_cropped, crop_and_pad_nd(seg_prev, bbox, -1)[None]))
+                seg_all[patch_index_all] = seg_cropped
+
+                patch_index_all += 1
 
         if self.patch_size_was_2d:
             data_all = data_all[:, :, 0]
@@ -304,11 +276,24 @@ class nnUNetDataLoader(DataLoader):
         return {'data': data_all, 'target': seg_all, 'keys': selected_keys}
 
 
+
 if __name__ == '__main__':
-    folder = join(nnUNet_preprocessed, 'Dataset002_Heart', 'nnUNetPlans_3d_fullres')
-    ds = nnUNetDatasetBlosc2(folder)  # this should not load the properties!
+    import nrrd
+    folder = join(nnUNet_preprocessed, 'Dataset907_MEGAPAN_first_iteration', 'nnUNetPlans_3d_fullres')
+    ds = nnUNetDatasetNumpy(folder)  #
     pm = PlansManager(join(folder, os.pardir, 'nnUNetPlans.json'))
     lm = pm.get_label_manager(load_json(join(folder, os.pardir, 'dataset.json')))
-    dl = nnUNetDataLoader(ds, 5, (16, 16, 16), (16, 16, 16), lm,
-                          0.33, None, None)
+    dl = nnUNetDataLoader(ds, 8, (16, 16, 16), (16, 16, 16), lm,
+                          0.33, None, None, indices_per_scan=4)
+
+    data_dict = dl.generate_train_batch()
+    dict_temp = {'NOTE:': "this is a test case!!"}
+    gt_folder = join(nnUNet_preprocessed, 'Dataset907_MEGAPAN_first_iteration', 'gt_segmentations')
+    test_dir = join(nnUNet_preprocessed, 'Dataset907_MEGAPAN_first_iteration', 'test')
+    os.makedirs(test_dir, exist_ok=True)
+    for i in range(len(data_dict['data'])):
+        header = nrrd.read_header(join(gt_folder, data_dict['keys'][i] + '.nrrd'))
+        file_temp = join(test_dir, data_dict['keys'][i] + f"_{i}")
+        nrrd.write(data=data_dict['data'],file=file_temp + ".nrrd", header=header)
+
     a = next(dl)
