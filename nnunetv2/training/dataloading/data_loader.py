@@ -26,7 +26,7 @@ class nnUNetDataLoader(DataLoader):
                  oversample_foreground_percent: float = 0.0,
                  sampling_probabilities: Union[List[int], Tuple[int, ...], np.ndarray] = None,
                  pad_sides: Union[List[int], Tuple[int, ...]] = None,
-                 probabilistic_oversampling: bool = True, # TODO: make this in default True (to always randomize the oversampling)
+                 probabilistic_oversampling: bool = True,
                  transforms=None,
                  indices_per_scan: int = 1,
                  ):

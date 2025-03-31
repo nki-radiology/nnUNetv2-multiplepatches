@@ -145,7 +145,7 @@ class nnUNetTrainer(object):
         self.initial_lr = 1e-2
         self.weight_decay = 3e-5
         self.oversample_foreground_percent = 0.33
-        self.probabilistic_oversampling = False
+        self.probabilistic_oversampling = True # Always randomize if we force the foreground percent
         self.num_iterations_per_epoch = 250
         self.num_val_iterations_per_epoch = 50
         self.num_epochs = 1000
@@ -638,6 +638,10 @@ class nnUNetTrainer(object):
             self.print_to_log_file('Using %d scans with each %d patches per batch' % (self.configuration_manager.indices_per_scan, self.configuration_manager.batch_size))
             if self.batch_size < self.configuration_manager.indices_per_scan:
                 raise RuntimeError('Batch size is smaller than indices per scan, is not possible!')
+
+            # if the scans_per_batch is not a round number, we need to give an error
+            if scans_per_batch != int(scans_per_batch):
+                raise RuntimeError('Batch size is not divisible by indices per scan, is not possible!')
 
         # needed for deep supervision: how much do we need to downscale the segmentation targets for the different
         # outputs?
