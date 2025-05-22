@@ -142,13 +142,16 @@ class nnUNetTrainer(object):
                 if self.is_cascaded else None
 
         ### Some hyperparameters for you to fiddle with
-        self.initial_lr = 1e-2
+        # HACK: Changed so we can put these inside the config file
         self.weight_decay = 3e-5
         self.oversample_foreground_percent = 0.33
-        self.probabilistic_oversampling = True # Always randomize if we force the foreground percent
         self.num_iterations_per_epoch = 250
         self.num_val_iterations_per_epoch = 50
-        self.num_epochs = 1000
+
+        self.probabilistic_oversampling = self.configuration_manager.probabilistic_oversampling # Default True
+        self.initial_lr = self.configuration_manager.initial_lr
+        self.num_epochs = self.configuration_manager.num_epochs
+
         self.current_epoch = 0
         self.enable_deep_supervision = True
 
@@ -194,8 +197,11 @@ class nnUNetTrainer(object):
                                "Isensee, F., Jaeger, P. F., Kohl, S. A., Petersen, J., & Maier-Hein, K. H. (2021). "
                                "nnU-Net: a self-configuring method for deep learning-based biomedical image segmentation. "
                                "Nature methods, 18(2), 203-211.\n"
-                               "#######################################################################\n",
+                               "#######################################################################\n"
+                               "NOTE: using variation where you can use multiple patches per scan per batch!\n",
                                also_print_to_console=True, add_timestamp=False)
+
+        self.check_default_configs()
 
     def initialize(self):
         if not self.was_initialized:
@@ -236,6 +242,15 @@ class nnUNetTrainer(object):
         else:
             raise RuntimeError("You have called self.initialize even though the trainer was already initialized. "
                                "That should not happen.")
+
+    def check_default_configs(self):
+        # checks if we use defauls for some configs
+        if self.initial_lr != 1e-2:
+            self.print_to_log_file(f"WARNING: using no default setting for initial_lr: {self.initial_lr}")
+        if self.probabilistic_oversampling != False:
+            self.print_to_log_file(f"WARNING: using no default setting for probabilistic_oversampling: {self.probabilistic_oversampling}")
+        if self.num_epochs != 1000:
+            self.print_to_log_file(f"WARNING: using no default setting for num_epochs: {self.num_epochs}")
 
     def _do_i_compile(self):
         # new default: compile is enabled!

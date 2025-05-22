@@ -128,6 +128,18 @@ class ConfigurationManager(object):
         return self.configuration.get('indices_per_scan', 1)
 
     @property
+    def initial_lr(self) -> float:
+        return self.configuration.get('initial_lr', 1e-2)
+
+    @property
+    def num_epochs(self) -> int:
+        return self.configuration.get('num_epochs', 1000)
+
+    @property
+    def probabilistic_oversampling(self) -> bool:
+        return self.configuration.get('probabilistic_oversampling', True)
+
+    @property
     def median_image_size_in_voxels(self) -> List[int]:
         return self.configuration['median_image_size_in_voxels']
 
